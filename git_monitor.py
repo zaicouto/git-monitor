@@ -2,14 +2,16 @@ import os
 import time
 from pathlib import Path
 
+import winrt.windows.data.xml.dom as dom
+import winrt.windows.ui.notifications as notifications
 from git import Repo, InvalidGitRepositoryError
-from win10toast import ToastNotifier
 
 # Caminho raiz onde estão seus repositórios Git
 ROOT_PATH = Path(os.path.expanduser("~/source"))
 CHECK_INTERVAL = 600 * 6  # 60 minutos
+# CHECK_INTERVAL = 30  # 30 segundos
 
-toaster = ToastNotifier()
+APP_ID = "GitMonitor.Notifier"  # Pode ser qualquer identificador único
 
 
 def is_git_repo(path):
@@ -32,8 +34,8 @@ def check_repo_status(repo_path):
             origin.fetch()
 
             branch = repo.active_branch
-            behind = list(repo.iter_commits(f'{branch}..origin/{branch}'))
-            ahead = list(repo.iter_commits(f'origin/{branch}..{branch}'))
+            behind = list(repo.iter_commits(f"{branch}..origin/{branch}"))
+            ahead = list(repo.iter_commits(f"origin/{branch}..{branch}"))
 
             unpushed = len(ahead) > 0
             need_pull = len(behind) > 0
@@ -54,14 +56,27 @@ def check_repo_status(repo_path):
         return f"[{repo_path.name}] ❌ Erro: {e}"
 
 
-def notify(message):
-    toaster.show_toast(
-        "Git Monitor",
-        message,
-        duration=10
-    )
-    while toaster.notification_active():
-        time.sleep(0.1)
+def notify(title, message):
+    # Template do toast
+    tstr = f"""
+    <toast activationType="foreground">
+        <visual>
+            <binding template="ToastGeneric">
+                <text>{title}</text>
+                <text>{message}</text>
+            </binding>
+        </visual>
+    </toast>
+    """
+
+    # Cria o objeto XML
+    xdoc = dom.XmlDocument()
+    xdoc.load_xml(tstr)
+
+    # Cria e envia a notificação
+    notifier = notifications.ToastNotificationManager.create_toast_notifier(APP_ID)
+    notification = notifications.ToastNotification(xdoc)
+    notifier.show(notification)
 
 
 def monitor_git_repos():
@@ -76,10 +91,10 @@ def monitor_git_repos():
 
         if attention_needed:
             for msg in attention_needed:
-                notify(msg)
+                notify("Git Monitor", msg)
                 print(msg)
         else:
-            notify("✅ Todos os repositórios estão sincronizados!")
+            notify("Git Monitor", "✅ Todos os repositórios estão sincronizados!")
             print("✅ Todos os repositórios estão sincronizados!")
 
         time.sleep(CHECK_INTERVAL)
